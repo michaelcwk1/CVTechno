@@ -42,6 +42,31 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
 </html>`;
   };
 
+  // Simpan order ke localStorage (karena serverless function stateless)
+  const saveOrderToLocalStorage = (orderId: string, orderData: any) => {
+    try {
+      const orders = JSON.parse(localStorage.getItem('cv_orders') || '{}');
+      orders[orderId] = {
+        ...orderData,
+        createdAt: Date.now()
+      };
+      localStorage.setItem('cv_orders', JSON.stringify(orders));
+      console.log('💾 Order saved to localStorage:', orderId);
+    } catch (e) {
+      console.warn('localStorage not available');
+    }
+  };
+
+  // Cek order dari localStorage
+  const getOrderFromLocalStorage = (orderId: string) => {
+    try {
+      const orders = JSON.parse(localStorage.getItem('cv_orders') || '{}');
+      return orders[orderId] || null;
+    } catch (e) {
+      return null;
+    }
+  };
+
   // Polling status pembayaran
   const checkPaymentStatus = async (orderId: string) => {
     try {
@@ -50,7 +75,7 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
 
       console.log('📊 Payment status:', data);
 
-      if (data.paid) {
+      if (data.paid || data.status === 'success') {
         console.log('✅ Payment confirmed!');
         if (pollingRef.current) clearInterval(pollingRef.current);
         setPaid(true);
@@ -96,10 +121,19 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
         throw new Error('Invalid payment response');
       }
 
-      orderIdRef.current = data.orderId;
-      console.log('🎫 Order created:', data.orderId);
+      const orderId = data.orderId;
+      orderIdRef.current = orderId;
 
-      // 2. Open Saweria payment page
+      // 2. Simpan order ke localStorage
+      saveOrderToLocalStorage(orderId, {
+        amount: data.amount,
+        email: cvData.basicInfo?.email,
+        status: 'pending'
+      });
+
+      console.log('🎫 Order created:', orderId);
+
+      // 3. Open Saweria payment page
       const paymentWindow = window.open(data.paymentUrl, '_blank');
       if (!paymentWindow) {
         throw new Error('Popup blocked. Please allow popups and try again.');
@@ -107,7 +141,7 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
 
       toast.info('Selesaikan pembayaran di Saweria untuk melanjutkan...');
 
-      // 3. Polling every 3 seconds (max 5 minutes)
+      // 4. Polling every 3 seconds (max 5 minutes)
       let pollCount = 0;
       const maxPolls = 100; // 5 minutes
 
@@ -115,7 +149,7 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
         pollCount++;
         console.log(`🔍 Checking payment status... (${pollCount})`);
 
-        const paid = await checkPaymentStatus(data.orderId);
+        const paid = await checkPaymentStatus(orderId);
 
         if (paid) {
           clearInterval(pollingRef.current!);
@@ -225,7 +259,6 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
     </div>
   );
 }
-
 // import { useState, useEffect, useRef } from 'react';
 // import { Button } from '@/components/ui/button';
 // import { FileText, Printer } from 'lucide-react';

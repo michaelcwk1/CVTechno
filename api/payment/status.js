@@ -1,8 +1,9 @@
+// api/payment/status.js
 export const config = {
   runtime: 'nodejs'
 };
 
-import { store } from '../_store.js';
+import { sharedStore } from '../_shared-store.js';
 
 export default function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -27,15 +28,24 @@ export default function handler(req, res) {
       });
     }
 
-    const order = store.get(orderId);
+    console.log('🔍 Checking order:', orderId);
+
+    sharedStore.debug();
+
+    const order = sharedStore.get(orderId);
 
     if (!order) {
-      return res.status(404).json({
+      console.log('❌ Order not found:', orderId);
+      return res.status(200).json({
         success: false,
+        orderId,
+        status: 'not_found',
         paid: false,
         error: 'Order not found'
       });
     }
+
+    console.log('✅ Order found:', { orderId, status: order.status });
 
     return res.status(200).json({
       success: true,
