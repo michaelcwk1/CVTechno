@@ -1,3 +1,4 @@
+// api/payment/init.js
 export const config = {
   runtime: 'nodejs'
 };
@@ -5,6 +6,7 @@ export const config = {
 import { store } from '../_store.js';
 
 export default function handler(req, res) {
+  // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -20,6 +22,7 @@ export default function handler(req, res) {
   try {
     const { amount, name, email } = req.body || {};
 
+    // Validasi
     if (!amount || !email) {
       return res.status(400).json({
         success: false,
@@ -27,8 +30,10 @@ export default function handler(req, res) {
       });
     }
 
+    // 1. Buat Order ID (unique)
     const orderId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+    // 2. Simpan ke Store
     store.set(orderId, {
       amount,
       name: name || 'Guest User',
@@ -40,13 +45,17 @@ export default function handler(req, res) {
 
     console.log('🧾 ORDER CREATED:', orderId, { amount, email });
 
+    // 3. Buat Saweria Payment URL
+    // PENTING: Pass orderId sebagai custom parameter di URL
     const saweriaUsername = process.env.SAWERIA_USERNAME || 'eilasya';
-    const paymentUrl = `https://saweria.co/${saweriaUsername}?amount=${amount}&order_id=${orderId}`;
+    const paymentUrl = `https://saweria.co/${saweriaUsername}`;
 
+    // 4. Return response
     return res.status(200).json({
       success: true,
       orderId,
       paymentUrl,
+      amount,
       message: 'Silakan selesaikan pembayaran di Saweria'
     });
 
@@ -58,7 +67,6 @@ export default function handler(req, res) {
     });
   }
 }
-
 // export default async function handler(req, res) {
 //   // ===== CORS =====
 //   res.setHeader('Access-Control-Allow-Origin', '*');
