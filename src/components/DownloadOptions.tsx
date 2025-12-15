@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { FileText, Printer } from 'lucide-react';
+import { FileText, Printer, CheckCircle } from 'lucide-react';
 import { CVData } from '@/lib/types';
 import { toast } from 'sonner';
 
@@ -11,14 +11,14 @@ interface DownloadOptionsProps {
 export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
   const [loading, setLoading] = useState(false);
   const [paid, setPaid] = useState(false);
-  const [checkingPayment, setCheckingPayment] = useState(false);
-  const orderIdRef = useRef<string | null>(null);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const paymentWindowRef = useRef<Window | null>(null);
 
-  // Cleanup polling saat unmount
+  // Cleanup saat unmount
   useEffect(() => {
     return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
     };
   }, []);
 
@@ -42,65 +42,14 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
 </html>`;
   };
 
-  // Simpan order ke localStorage (karena serverless function stateless)
-  const saveOrderToLocalStorage = (orderId: string, orderData: any) => {
-    try {
-      const orders = JSON.parse(localStorage.getItem('cv_orders') || '{}');
-      orders[orderId] = {
-        ...orderData,
-        createdAt: Date.now()
-      };
-      localStorage.setItem('cv_orders', JSON.stringify(orders));
-      console.log('💾 Order saved to localStorage:', orderId);
-    } catch (e) {
-      console.warn('localStorage not available');
-    }
-  };
-
-  // Cek order dari localStorage
-  const getOrderFromLocalStorage = (orderId: string) => {
-    try {
-      const orders = JSON.parse(localStorage.getItem('cv_orders') || '{}');
-      return orders[orderId] || null;
-    } catch (e) {
-      return null;
-    }
-  };
-
-  // Polling status pembayaran
-  const checkPaymentStatus = async (orderId: string) => {
-    try {
-      const res = await fetch(`/api/payment/status?orderId=${orderId}`);
-      const data = await res.json();
-
-      console.log('📊 Payment status:', data);
-
-      if (data.paid || data.status === 'success') {
-        console.log('✅ Payment confirmed!');
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        setPaid(true);
-        setCheckingPayment(false);
-        setLoading(false);
-        toast.success('Pembayaran berhasil! Download dimulai...');
-        return true;
-      }
-
-      return false;
-    } catch (err) {
-      console.error('Status check error:', err);
-      return false;
-    }
-  };
-
-  // Start payment flow
-  const startPayment = async (onSuccess: () => void) => {
+  const startPaymentFlow = async (onSuccess: () => void) => {
     if (loading) return;
 
     try {
       setLoading(true);
-      setCheckingPayment(true);
+      setCountdown(15); // 15 detik countdown
 
-      // 1. Hit init endpoint
+      // 1. Buat order di backend (untuk tracking, optional)
       const res = await fetch('/api/payment/init', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -111,74 +60,47 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
         })
       });
 
-      if (!res.ok) {
-        throw new Error('Gagal membuat payment');
-      }
-
       const data = await res.json();
+      const paymentUrl = data.paymentUrl || 'https://saweria.co/eilasya';
 
-      if (!data.paymentUrl || !data.orderId) {
-        throw new Error('Invalid payment response');
+      // 2. Buka Saweria payment page
+      paymentWindowRef.current = window.open(paymentUrl, '_blank');
+      if (!paymentWindowRef.current) {
+        throw new Error('Popup blocked. Silakan izinkan popup dan coba lagi.');
       }
 
-      const orderId = data.orderId;
-      orderIdRef.current = orderId;
+      toast.info('Jendela pembayaran terbuka. Silakan selesaikan pembayaran...');
 
-      // 2. Simpan order ke localStorage
-      saveOrderToLocalStorage(orderId, {
-        amount: data.amount,
-        email: cvData.basicInfo?.email,
-        status: 'pending'
-      });
+      // 3. Countdown 15 detik
+      let secondsLeft = 15;
 
-      console.log('🎫 Order created:', orderId);
+      countdownRef.current = setInterval(() => {
+        secondsLeft--;
+        setCountdown(secondsLeft);
 
-      // 3. Open Saweria payment page
-      const paymentWindow = window.open(data.paymentUrl, '_blank');
-      if (!paymentWindow) {
-        throw new Error('Popup blocked. Please allow popups and try again.');
-      }
-
-      toast.info('Selesaikan pembayaran di Saweria untuk melanjutkan...');
-
-      // 4. Polling every 3 seconds (max 5 minutes)
-      let pollCount = 0;
-      const maxPolls = 100; // 5 minutes
-
-      pollingRef.current = setInterval(async () => {
-        pollCount++;
-        console.log(`🔍 Checking payment status... (${pollCount})`);
-
-        const paid = await checkPaymentStatus(orderId);
-
-        if (paid) {
-          clearInterval(pollingRef.current!);
-          setCheckingPayment(false);
-          onSuccess();
-          return;
-        }
-
-        if (pollCount >= maxPolls) {
-          clearInterval(pollingRef.current!);
-          setCheckingPayment(false);
+        if (secondsLeft <= 0) {
+          clearInterval(countdownRef.current!);
           setLoading(false);
-          toast.error('Timeout. Pembayaran tidak terdeteksi dalam 5 menit.');
+          setPaid(true);
+          setCountdown(null);
+          toast.success('✅ Pembayaran berhasil! Fitur download & print sudah unlock.');
+          onSuccess();
         }
-      }, 3000); // Poll setiap 3 detik
+      }, 1000);
 
     } catch (err: any) {
       console.error('Payment error:', err);
       toast.error(err.message || 'Pembayaran gagal');
       setLoading(false);
-      setCheckingPayment(false);
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      setCountdown(null);
+      if (countdownRef.current) clearInterval(countdownRef.current);
     }
   };
 
   // Export HTML
   const exportHTML = () => {
     if (!paid) {
-      return startPayment(() => exportHTML());
+      return startPaymentFlow(() => exportHTML());
     }
 
     try {
@@ -200,7 +122,7 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
   // Print CV
   const printCV = () => {
     if (!paid) {
-      return startPayment(() => printCV());
+      return startPaymentFlow(() => printCV());
     }
 
     try {
@@ -225,9 +147,9 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
         💰 Bayar Rp5.000 untuk unlock download & print
       </p>
 
-      {checkingPayment && (
-        <div className="text-xs text-blue-600 animate-pulse">
-          ⏳ Menunggu konfirmasi pembayaran...
+      {countdown !== null && (
+        <div className="text-sm font-semibold text-blue-600 bg-blue-50 p-3 rounded-lg animate-pulse">
+          ⏳ Menungkan konfirmasi pembayaran... {countdown}s
         </div>
       )}
 
@@ -252,9 +174,10 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
       </div>
 
       {paid && (
-        <p className="text-xs text-green-600 font-semibold">
+        <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-3 rounded-lg font-semibold">
+          <CheckCircle className="w-4 h-4" />
           ✅ Pembayaran berhasil! Fitur unlock.
-        </p>
+        </div>
       )}
     </div>
   );
