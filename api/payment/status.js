@@ -3,8 +3,6 @@ export const config = {
   runtime: 'nodejs'
 };
 
-import { sharedStore } from '../_shared-store.js';
-
 export default function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -28,11 +26,14 @@ export default function handler(req, res) {
       });
     }
 
+    // Akses global store dari init.js
+    const orderStore = global.orderStore || new Map();
+    
     console.log('🔍 Checking order:', orderId);
+    console.log('📦 Store size:', orderStore.size);
+    console.log('📋 Store keys:', Array.from(orderStore.keys()));
 
-    sharedStore.debug();
-
-    const order = sharedStore.get(orderId);
+    const order = orderStore.get(orderId);
 
     if (!order) {
       console.log('❌ Order not found:', orderId);

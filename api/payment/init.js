@@ -1,9 +1,10 @@
-// api/payment/init.js
+ // api/payment/init.js
 export const config = {
   runtime: 'nodejs'
 };
 
-import { sharedStore } from '../_shared-store.js';
+// Simple in-memory store - shared across same instance
+const orderStore = new Map();
 
 export default function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -21,6 +22,7 @@ export default function handler(req, res) {
   try {
     const { amount, name, email } = req.body || {};
 
+    // Validasi
     if (!amount || !email) {
       return res.status(400).json({
         success: false,
@@ -28,26 +30,30 @@ export default function handler(req, res) {
       });
     }
 
+    // 1. Buat Order ID (unique)
     const orderId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+    // 2. Simpan ke in-memory store
     const orderData = {
       amount,
       name: name || 'Guest User',
       email,
       status: 'pending',
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      updatedAt: Date.now()
     };
 
-    sharedStore.set(orderId, orderData);
+    orderStore.set(orderId, orderData);
 
     console.log('🧾 ORDER CREATED:', orderId);
-    console.log('📋 Order:', orderData);
+    console.log('📦 Store size:', orderStore.size);
+    console.log('📋 Order data:', orderData);
 
-    sharedStore.debug();
-
+    // 3. Buat Saweria Payment URL
     const saweriaUsername = process.env.SAWERIA_USERNAME || 'eilasya';
     const paymentUrl = `https://saweria.co/${saweriaUsername}`;
 
+    // 4. Return response
     return res.status(200).json({
       success: true,
       orderId,
@@ -64,6 +70,12 @@ export default function handler(req, res) {
     });
   }
 }
+
+// Expose untuk webhook & status
+global.orderStore = orderStore;
+
+
+
 
 
 // export default async function handler(req, res) {

@@ -259,6 +259,7 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
     </div>
   );
 }
+
 // import { useState, useEffect, useRef } from 'react';
 // import { Button } from '@/components/ui/button';
 // import { FileText, Printer } from 'lucide-react';
