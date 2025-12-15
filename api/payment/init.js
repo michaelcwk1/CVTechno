@@ -1,12 +1,12 @@
-// api/payment/init.js
+ // api/payment/init.js
 export const config = {
   runtime: 'nodejs'
 };
 
-import { store } from '../_store.js';
+// Simple in-memory store - shared across same instance
+const orderStore = new Map();
 
 export default function handler(req, res) {
-  // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -33,20 +33,23 @@ export default function handler(req, res) {
     // 1. Buat Order ID (unique)
     const orderId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // 2. Simpan ke Store
-    store.set(orderId, {
+    // 2. Simpan ke in-memory store
+    const orderData = {
       amount,
       name: name || 'Guest User',
       email,
       status: 'pending',
       createdAt: Date.now(),
       updatedAt: Date.now()
-    });
+    };
 
-    console.log('🧾 ORDER CREATED:', orderId, { amount, email });
+    orderStore.set(orderId, orderData);
+
+    console.log('🧾 ORDER CREATED:', orderId);
+    console.log('📦 Store size:', orderStore.size);
+    console.log('📋 Order data:', orderData);
 
     // 3. Buat Saweria Payment URL
-    // PENTING: Pass orderId sebagai custom parameter di URL
     const saweriaUsername = process.env.SAWERIA_USERNAME || 'eilasya';
     const paymentUrl = `https://saweria.co/${saweriaUsername}`;
 
@@ -67,6 +70,14 @@ export default function handler(req, res) {
     });
   }
 }
+
+// Expose untuk webhook & status
+global.orderStore = orderStore;
+
+
+
+
+
 // export default async function handler(req, res) {
 //   // ===== CORS =====
 //   res.setHeader('Access-Control-Allow-Origin', '*');

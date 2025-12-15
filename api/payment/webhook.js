@@ -3,12 +3,6 @@ export const config = {
   runtime: 'nodejs'
 };
 
-import { store } from '../_store.js';
-
-// Mapping antara Saweria payment ID dengan order ID kita
-// Key: saweria_id, Value: order_id
-const paymentMapping = new Map();
-
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -18,18 +12,16 @@ export default async function handler(req, res) {
     console.log('📥 WEBHOOK RECEIVED:', JSON.stringify(req.body, null, 2));
 
     const body = req.body || {};
-    
-    // Saweria format:
+    const orderStore = global.orderStore || new Map();
+
+    // Saweria format yang dikirim:
     // {
-    //   version: "2022.01",
-    //   created_at: "2021-01-01T12:00:00+00:00",
-    //   id: "uuid-dari-saweria",
+    //   id: "uuid",
     //   type: "donation",
-    //   amount_raw: 69420,
-    //   cut: 3471,
-    //   donator_name: "Someguy",
-    //   donator_email: "someguy@example.com",
-    //   message: "order-id-kita-atau-keterangan-lain"
+    //   amount_raw: 5000,
+    //   donator_email: "user@email.com",
+    //   donator_name: "Name",
+    //   message: "optional message"
     // }
 
     const {
@@ -44,7 +36,7 @@ export default async function handler(req, res) {
       console.warn('⚠️ Invalid webhook format:', body);
       return res.status(200).json({
         success: true,
-        message: 'Invalid webhook format (not a donation)'
+        message: 'Invalid webhook (not a donation)'
       });
     }
 
@@ -55,63 +47,62 @@ export default async function handler(req, res) {
       message
     });
 
-    // Cari order ID dari message (user harus tulis order ID di message saat bayar)
-    // Atau cari di paymentMapping jika kita tracking
-    let orderId = null;
+    console.log('📦 Current store size:', orderStore.size);
+    console.log('📋 Orders in store:', Array.from(orderStore.keys()));
 
-    // Strategy 1: Cari order berdasarkan email yang match
-    for (const [oid, order] of store.entries()) {
-      if (order.email === donator_email && order.status === 'pending') {
-        // Jika ada order pending dengan email yang sama dan amount match
-        if (Math.abs(order.amount - amount_raw) < 100) { // tolerance 100
-          orderId = oid;
-          break;
-        }
+    // Strategy: Match berdasarkan email + amount
+    let foundOrderId = null;
+
+    for (const [orderId, order] of orderStore.entries()) {
+      console.log(`📌 Checking order ${orderId}:`, {
+        orderEmail: order.email,
+        orderAmount: order.amount,
+        saweriaEmail: donator_email,
+        saweriaAmount: amount_raw,
+        emailMatch: order.email === donator_email,
+        amountMatch: Math.abs(order.amount - amount_raw) < 100
+      });
+
+      if (
+        order.email === donator_email &&
+        order.status === 'pending' &&
+        Math.abs(order.amount - amount_raw) < 100
+      ) {
+        foundOrderId = orderId;
+        console.log('✅ FOUND MATCHING ORDER:', orderId);
+        break;
       }
     }
 
-    if (!orderId) {
-      console.warn('⚠️ Order not found for email:', donator_email);
-      // Tetap return 200 agar Saweria stop retry
+    if (!foundOrderId) {
+      console.warn('⚠️ No matching order found for email:', donator_email);
       return res.status(200).json({
         success: true,
-        message: 'Order not found'
+        message: 'No matching order'
       });
     }
 
-    const order = store.get(orderId);
-
-    if (!order) {
-      console.warn('⚠️ Order not in store:', orderId);
-      return res.status(200).json({
-        success: true,
-        message: 'Order not in store'
-      });
-    }
-
-    // Update status ke success
+    // Update order status
+    const order = orderStore.get(foundOrderId);
     order.status = 'success';
     order.paidAt = Date.now();
     order.saweriaId = saweriaId;
 
-    store.set(orderId, order);
-    paymentMapping.set(saweriaId, orderId);
+    orderStore.set(foundOrderId, order);
 
-    console.log('✅ PAYMENT CONFIRMED:', orderId, {
+    console.log('✅ PAYMENT CONFIRMED:', foundOrderId, {
       status: order.status,
-      amount: order.amount,
       paidAt: order.paidAt
     });
 
     return res.status(200).json({
       success: true,
-      orderId,
+      orderId: foundOrderId,
       message: 'Payment confirmed'
     });
 
   } catch (err) {
     console.error('🔥 WEBHOOK ERROR:', err);
-    // Tetap return 200 untuk tidak di-retry terus
     return res.status(200).json({
       success: false,
       message: 'Error processing webhook'
