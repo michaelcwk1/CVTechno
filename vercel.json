@@ -1,8 +1,7 @@
 {
-    "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*)", "dest": "/" }
-  ]
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "env": {
+    "SAWERIA_USERNAME": "@saweria_username"
+  }
 }
