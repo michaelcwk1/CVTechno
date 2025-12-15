@@ -1,4 +1,3 @@
-// api/payment/status.js
 export const config = {
   runtime: 'nodejs'
 };
@@ -38,7 +37,6 @@ export default function handler(req, res) {
       });
     }
 
-    // Return status pembayaran
     return res.status(200).json({
       success: true,
       orderId,

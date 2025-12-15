@@ -1,7 +1,4 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": ".next",
-  "env": {
-    "SAWERIA_USERNAME": "@saweria_username"
-  }
+  "outputDirectory": ".next"
 }
