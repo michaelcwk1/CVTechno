@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,10 +20,8 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
   const [showModal, setShowModal] = useState(false);
   const [proofFile, setProofFile] = useState<File | null>(null);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('cv_paid');
-    if (saved === 'true') setPaid(true);
-  }, []);
+  // 🔒 KUNCI STEP 2 SAMPAI STEP 1 DIKLIK
+  const [paymentStarted, setPaymentStarted] = useState(false);
 
   const generateHtmlContent = () => {
     const el = document.querySelector('#cv-preview') as HTMLElement;
@@ -138,20 +136,27 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
 
                   <Button
                     className="w-full bg-indigo-600 hover:bg-indigo-700"
-                    onClick={() =>
-                      window.open('https://saweria.co/eilasya', '_blank')
-                    }
+                    onClick={() => {
+                      setPaymentStarted(true);
+                      window.open('https://saweria.co/eilasya', '_blank');
+                    }}
                   >
                     Bayar via Saweria
                   </Button>
                 </div>
 
-                {/* STEP 2 */}
-                <div className="rounded-xl border p-4 space-y-3">
+                {/* STEP 2 (LOCKED) */}
+                <div
+                  className={`rounded-xl border p-4 space-y-3 transition ${
+                    !paymentStarted
+                      ? 'opacity-50 pointer-events-none'
+                      : ''
+                  }`}
+                >
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
-                        proofFile
+                        paymentStarted
                           ? 'bg-indigo-600 text-white'
                           : 'bg-gray-200 text-gray-600'
                       }`}
@@ -186,7 +191,6 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
                   className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
                   disabled={!proofFile}
                   onClick={() => {
-                    localStorage.setItem('cv_paid', 'true');
                     setPaid(true);
                     setShowModal(false);
                     toast.success('Pembayaran berhasil dikonfirmasi');
@@ -209,7 +213,6 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
     </div>
   );
 }
-
 
 
 // import { useState, useEffect, useRef } from 'react';
