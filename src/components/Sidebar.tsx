@@ -12,6 +12,7 @@ import { Projects } from '@/components/sections/Projects';
 import { GeneralSection } from '@/components/sections/GeneralSection';
 import { ThemeSelector } from '@/components/ThemeSelector';
 import { TailorCVDialog } from '@/components/TailorCVDialog';
+
 import { ConfigurationPanel } from '@/components/ConfigurationPanel';
 import { AddSection } from '@/components/AddSectionPanel';
 import DownloadOptions from '@/components/DownloadOptions';

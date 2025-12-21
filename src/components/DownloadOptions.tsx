@@ -1,6 +1,13 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
-import { FileText, Printer, CheckCircle } from 'lucide-react';
+import {
+  FileText,
+  Printer,
+  CheckCircle,
+  CreditCard,
+  Upload,
+} from 'lucide-react';
 import { CVData } from '@/lib/types';
 import { toast } from 'sonner';
 
@@ -9,17 +16,13 @@ interface DownloadOptionsProps {
 }
 
 export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
-  const [loading, setLoading] = useState(false);
   const [paid, setPaid] = useState(false);
-  const [countdown, setCountdown] = useState<number | null>(null);
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
-  const paymentWindowRef = useRef<Window | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [proofFile, setProofFile] = useState<File | null>(null);
 
-  // Cleanup saat unmount
   useEffect(() => {
-    return () => {
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
+    const saved = localStorage.getItem('cv_paid');
+    if (saved === 'true') setPaid(true);
   }, []);
 
   const generateHtmlContent = () => {
@@ -42,103 +45,29 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
 </html>`;
   };
 
-  const startPaymentFlow = async (onSuccess: () => void) => {
-    if (loading) return;
-
-    try {
-      setLoading(true);
-      setCountdown(15); // 15 detik countdown
-
-      // 1. Buat order di backend (untuk tracking, optional)
-      const res = await fetch('/api/payment/init', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: 5000,
-          name: cvData.basicInfo?.name || 'Guest User',
-          email: cvData.basicInfo?.email || 'guest@email.com'
-        })
-      });
-
-      const data = await res.json();
-      const paymentUrl = data.paymentUrl || 'https://saweria.co/eilasya';
-
-      // 2. Buka Saweria payment page
-      paymentWindowRef.current = window.open(paymentUrl, '_blank');
-      if (!paymentWindowRef.current) {
-        throw new Error('Popup blocked. Silakan izinkan popup dan coba lagi.');
-      }
-
-      toast.info('Jendela pembayaran terbuka. Silakan selesaikan pembayaran...');
-
-      // 3. Countdown 15 detik
-      let secondsLeft = 15;
-
-      countdownRef.current = setInterval(() => {
-        secondsLeft--;
-        setCountdown(secondsLeft);
-
-        if (secondsLeft <= 0) {
-          clearInterval(countdownRef.current!);
-          setLoading(false);
-          setPaid(true);
-          setCountdown(null);
-          toast.success('✅ Pembayaran berhasil! Fitur download & print sudah unlock.');
-          onSuccess();
-        }
-      }, 1000);
-
-    } catch (err: any) {
-      console.error('Payment error:', err);
-      toast.error(err.message || 'Pembayaran gagal');
-      setLoading(false);
-      setCountdown(null);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    }
-  };
-
-  // Export HTML
   const exportHTML = () => {
-    if (!paid) {
-      return startPaymentFlow(() => exportHTML());
-    }
+    if (!paid) return setShowModal(true);
 
-    try {
-      const blob = new Blob([generateHtmlContent()], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `CV-${cvData.basicInfo?.name || 'Document'}.html`;
-      a.click();
-
-      URL.revokeObjectURL(url);
-      toast.success('File berhasil diunduh');
-    } catch (err: any) {
-      toast.error(err.message || 'Export gagal');
-    }
+    const blob = new Blob([generateHtmlContent()], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `CV-${cvData.basicInfo?.name || 'Document'}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success('File berhasil diunduh');
   };
 
-  // Print CV
   const printCV = () => {
-    if (!paid) {
-      return startPaymentFlow(() => printCV());
-    }
+    if (!paid) return setShowModal(true);
 
-    try {
-      const w = window.open('', '_blank');
-      if (!w) {
-        throw new Error('Popup blocked');
-      }
+    const w = window.open('', '_blank');
+    if (!w) return toast.error('Popup diblokir browser');
 
-      w.document.write(generateHtmlContent());
-      w.document.close();
-      w.focus();
-      w.onload = () => w.print();
-      toast.success('Halaman print terbuka');
-    } catch (err: any) {
-      toast.error(err.message || 'Print gagal');
-    }
+    w.document.write(generateHtmlContent());
+    w.document.close();
+    w.focus();
+    w.onload = () => w.print();
   };
 
   return (
@@ -147,41 +76,141 @@ export default function DownloadOptions({ cvData }: DownloadOptionsProps) {
         💰 Bayar Rp5.000 untuk unlock download & print
       </p>
 
-      {countdown !== null && (
-        <div className="text-sm font-semibold text-blue-600 bg-blue-50 p-3 rounded-lg animate-pulse">
-          ⏳ Menungkan konfirmasi pembayaran... {countdown}s
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-3">
-        <Button
-          variant="outline"
-          disabled={loading}
-          onClick={exportHTML}
-        >
+        <Button variant="outline" onClick={exportHTML}>
           <FileText className="w-4 h-4 mr-2" />
-          {loading ? 'Loading...' : 'Export HTML'}
+          Export HTML
         </Button>
 
-        <Button
-          variant="outline"
-          disabled={loading}
-          onClick={printCV}
-        >
+        <Button variant="outline" onClick={printCV}>
           <Printer className="w-4 h-4 mr-2" />
-          {loading ? 'Loading...' : 'Print'}
+          Print
         </Button>
       </div>
 
       {paid && (
-        <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-3 rounded-lg font-semibold">
+        <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 p-3 rounded-xl font-semibold">
           <CheckCircle className="w-4 h-4" />
-          ✅ Pembayaran berhasil! Fitur unlock.
+          Pembayaran berhasil, fitur terbuka
         </div>
       )}
+
+      {/* ================= MODAL ================= */}
+      {showModal &&
+        typeof window !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+            <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
+
+              {/* HEADER */}
+              <div className="px-6 pt-6 pb-4 border-b">
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-indigo-600" />
+                  Unlock Download & Print
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Selesaikan pembayaran untuk mengakses fitur premium
+                </p>
+              </div>
+
+              {/* BODY */}
+              <div className="px-6 py-5 space-y-5">
+
+                {/* PRICE */}
+                <div className="rounded-xl border bg-gradient-to-br from-indigo-50 to-white p-4 text-center">
+                  <p className="text-sm text-gray-500">Biaya sekali bayar</p>
+                  <p className="text-3xl font-extrabold text-indigo-600 tracking-tight">
+                    Rp5.000
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Berlaku untuk CV ini (tanpa login)
+                  </p>
+                </div>
+
+                {/* STEP 1 */}
+                <div className="rounded-xl border p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold">
+                      1
+                    </div>
+                    <p className="font-semibold">Lakukan Pembayaran</p>
+                  </div>
+
+                  <Button
+                    className="w-full bg-indigo-600 hover:bg-indigo-700"
+                    onClick={() =>
+                      window.open('https://saweria.co/eilasya', '_blank')
+                    }
+                  >
+                    Bayar via Saweria
+                  </Button>
+                </div>
+
+                {/* STEP 2 */}
+                <div className="rounded-xl border p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
+                        proofFile
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-gray-200 text-gray-600'
+                      }`}
+                    >
+                      2
+                    </div>
+                    <p className="font-semibold">Upload Bukti Pembayaran</p>
+                  </div>
+
+                  <label className="flex items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-4 text-sm cursor-pointer hover:bg-gray-50 transition">
+                    <Upload className="w-4 h-4 text-gray-500" />
+                    <span className="text-gray-600 truncate">
+                      {proofFile
+                        ? proofFile.name
+                        : 'Klik untuk upload bukti transfer'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) =>
+                        setProofFile(e.target.files?.[0] || null)
+                      }
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* FOOTER */}
+              <div className="px-6 py-5 border-t space-y-3">
+                <Button
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+                  disabled={!proofFile}
+                  onClick={() => {
+                    localStorage.setItem('cv_paid', 'true');
+                    setPaid(true);
+                    setShowModal(false);
+                    toast.success('Pembayaran berhasil dikonfirmasi');
+                  }}
+                >
+                  Konfirmasi Pembayaran
+                </Button>
+
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="w-full text-sm text-gray-500 hover:underline"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
+
+
 
 // import { useState, useEffect, useRef } from 'react';
 // import { Button } from '@/components/ui/button';
